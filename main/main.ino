@@ -1,6 +1,8 @@
 #include <SoftwareSerial.h>
 #include <DFMiniMp3.h>
 
+#define VOLUME_PIN A0
+
 class Mp3Notify;
 
 SoftwareSerial secondarySerial(10, 11); // RX, TX
@@ -10,7 +12,7 @@ DfMp3 dfmp3(secondarySerial);
 uint16_t volume;
 uint16_t totalFilesCount;
 
-byte buttonColPins[] = {2, 3, 4};
+byte buttonColPins[] = {4, 3, 2};
 int numberOfCols = sizeof(buttonColPins) / sizeof(buttonColPins[0]);
 
 byte buttonRowPins[] = {5, 6, 7};
@@ -25,26 +27,26 @@ public:
 	{
 		if (source & DfMp3_PlaySources_Sd)
 		{
-			Serial.print("SD Card, ");
+			Serial.print("[DFPlayer] SD Card, ");
 		}
 		if (source & DfMp3_PlaySources_Usb)
 		{
-			Serial.print("USB Disk, ");
+			Serial.print("[DFPlayer] USB Disk, ");
 		}
 		if (source & DfMp3_PlaySources_Flash)
 		{
-			Serial.print("Flash, ");
+			Serial.print("[DFPlayer] Flash, ");
 		}
 		Serial.println(action);
 	}
 	static void OnError(DfMp3 &mp3, uint16_t errorCode)
 	{
-		Serial.print("Com Error ");
+		Serial.print("[DFPlayer] Com Error ");
 		Serial.println(errorCode);
 	}
 	static void OnPlayFinished(DfMp3 &mp3, DfMp3_PlaySources source, uint16_t track)
 	{
-		Serial.print("Play finished for #");
+		Serial.print("[DFPlayer] Play finished for #");
 		Serial.println(track);
 	}
 	static void OnPlaySourceOnline(DfMp3 &mp3, DfMp3_PlaySources source)
@@ -77,6 +79,7 @@ void setup()
 	Serial.print("Total files count: ");
 	Serial.println(totalFilesCount);
 
+	pinMode(VOLUME_PIN, INPUT);
 	setupButtonMatrix();
 }
 
@@ -101,9 +104,9 @@ int getPressedButton()
 		digitalWrite(buttonColPins[i], LOW);
 		for (int j = 0; j < numberOfRows; j++)
 		{
-			if (LOW == digitalRead(buttonRowPins[i]))
+			if (LOW == digitalRead(buttonRowPins[j]))
 			{
-				pressedBtnIndex = i + j;
+				pressedBtnIndex = i + (j * numberOfCols);
 				break;
 			}
 		}
@@ -116,12 +119,31 @@ int getPressedButton()
 	return pressedBtnIndex;
 }
 
+int getVolume()
+{
+	int vol = analogRead(VOLUME_PIN);
+	return map(vol, 0, 1022, 0, 30); // 1022and not 1023 to avoid the fluctuations when reaching 1023
+}
+
 void loop()
 {
+
 	int pressedButton = getPressedButton();
+
 	if (-1 != pressedButton && pressedButton != currentPlayedTrackIndex)
 	{
+		Serial.print("Button pressed: ");
+		Serial.println(pressedButton);
 		currentPlayedTrackIndex = pressedButton;
-		dfmp3.playMp3FolderTrack(currentPlayedTrackIndex);
+		dfmp3.playMp3FolderTrack(currentPlayedTrackIndex + 1);
 	}
+
+	int vol = getVolume();
+	if(abs(volume - vol) > 2 || (0 == vol && 0 != volume)) { // only if significant change, or 0 - change the volume
+		volume = vol;
+		Serial.print("Volume changed to: ");
+		Serial.println(volume);
+		dfmp3.setVolume(volume);
+	}
+	
 }
